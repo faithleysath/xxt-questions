@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>随机题库练习</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+            background-color: #f0f2f5;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        #app {
+            width: 100%;
+            max-width: 800px;
+            background: #fff;
+            padding: 2.5rem;
+            border-radius: 12px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+            transition: all 0.3s ease;
+        }
+
+        .loading, .error {
+            text-align: center;
+            font-size: 1.2rem;
+            color: #888;
+        }
+
+        .error {
+            color: #e53935;
+        }
+        
+        h1 {
+            text-align: center;
+            color: #1a73e8;
+            margin-bottom: 2rem;
+        }
+
+        .question-container {
+            min-height: 250px;
+        }
+
+        .question-stem {
+            font-size: 1.3rem;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+            color: #202124;
+        }
+
+        .options-list {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .option-item {
+            display: flex;
+            align-items: center;
+            padding: 0.8rem 1rem;
+            border: 1px solid #dadce0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+
+        .option-item:hover {
+            background-color: #f1f3f4;
+        }
+
+        .option-item.selected {
+            border-color: #1a73e8;
+            background-color: #e8f0fe;
+        }
+
+        .option-item input {
+            margin-right: 1rem;
+            width: 1.2em;
+            height: 1.2em;
+            accent-color: #1a73e8;
+        }
+
+        /* 答案揭示后的样式 */
+        .option-item.correct {
+            background-color: #e6f4ea;
+            border-color: #34a853;
+        }
+        
+        .option-item.incorrect {
+            background-color: #fce8e6;
+            border-color: #ea4335;
+        }
+        
+        .option-item.correct.selected {
+            background-color: #cce8d2;
+        }
+
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 2.5rem;
+        }
+
+        .btn {
+            padding: 0.8rem 2.5rem;
+            font-size: 1rem;
+            font-weight: 500;
+            color: #fff;
+            background-color: #1a73e8;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s ease, box-shadow 0.2s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn:hover {
+            background-color: #185abc;
+            box-shadow: 0 7px 14px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn:disabled {
+            background-color: #9e9e9e;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .next-btn {
+            background-color: #34a853;
+        }
+
+        .next-btn:hover {
+            background-color: #2c8c43;
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <h1>随机题库练习</h1>
+    <div v-if="loading" class="loading">题库加载中，请稍候...</div>
+    <div v-else-if="error" class="error">{{ error }}</div>
+    <div v-else-if="currentQuestion" class="question-container">
+        <p class="question-stem">{{ currentQuestion.stem }}</p>
+        <ul class="options-list">
+            <li v-for="(option, index) in currentQuestion.options"
+                :key="index"
+                class="option-item"
+                :class="{
+                    'selected': userSelection[index],
+                    'correct': showAnswer && option[1],
+                    'incorrect': showAnswer && !option[1] && userSelection[index]
+                }"
+                @click="toggleSelection(index)">
+                <input type="checkbox" :checked="userSelection[index]" @click.stop="toggleSelection(index)">
+                <label>{{ option[0] }}</label>
+            </li>
+        </ul>
+        <div class="controls">
+            <button v-if="!showAnswer" @click="checkAnswer" class="btn" :disabled="isSelectionEmpty">提交答案</button>
+            <button v-if="showAnswer" @click="nextQuestion" class="btn next-btn">下一题</button>
+        </div>
+    </div>
+    <div v-else class="loading">
+        题库已加载，点击按钮开始。
+        <div class="controls">
+            <button @click="nextQuestion" class="btn">开始答题</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const { createApp } = Vue;
+
+    createApp({
+        data() {
+            return {
+                questionBank: [],
+                currentQuestion: null,
+                userSelection: {},
+                showAnswer: false,
+                loading: true,
+                error: null,
+                questionUrl: 'https://gh-proxy.com/raw.githubusercontent.com/faithleysath/xxt-questions/refs/heads/main/%E9%A2%98%E5%BA%93.json'
+            };
+        },
+        computed: {
+            isSelectionEmpty() {
+                // 检查用户是否至少选择了一项
+                return Object.values(this.userSelection).every(value => !value);
+            }
+        },
+        methods: {
+            async fetchQuestions() {
+                try {
+                    const response = await fetch(this.questionUrl);
+                    if (!response.ok) {
+                        throw new Error(`HTTP 错误! 状态: ${response.status}`);
+                    }
+                    this.questionBank = await response.json();
+                    if(!Array.isArray(this.questionBank) || this.questionBank.length === 0) {
+                        throw new Error('加载的题库格式不正确或为空。');
+                    }
+                    console.log('题库加载成功！');
+                } catch (e) {
+                    this.error = `无法加载题库: ${e.message}。请检查网络连接或题库链接是否正确。`;
+                    console.error(e);
+                } finally {
+                    this.loading = false;
+                }
+            },
+            nextQuestion() {
+                if (this.questionBank.length === 0) {
+                    this.error = '题库为空，无法抽题。';
+                    return;
+                }
+                const randomIndex = Math.floor(Math.random() * this.questionBank.length);
+                this.currentQuestion = this.questionBank[randomIndex];
+                this.resetState();
+            },
+            resetState() {
+                this.showAnswer = false;
+                this.userSelection = {};
+                // 初始化 userSelection 对象
+                if (this.currentQuestion) {
+                    this.currentQuestion.options.forEach((_, index) => {
+                        this.userSelection[index] = false;
+                    });
+                }
+            },
+            toggleSelection(index) {
+                // 如果答案已显示，则不允许修改
+                if (this.showAnswer) return;
+                
+                // 因为不区分单选多选，所以总是切换状态
+                this.userSelection[index] = !this.userSelection[index];
+            },
+            checkAnswer() {
+                if (this.isSelectionEmpty) {
+                    alert('请至少选择一个选项！');
+                    return;
+                }
+                this.showAnswer = true;
+            }
+        },
+        async created() {
+            await this.fetchQuestions();
+        }
+    }).mount('#app');
+</script>
+
+</body>
+</html>
