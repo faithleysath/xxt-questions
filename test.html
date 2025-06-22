@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>随机题库练习</title>
+    <title>随机题库练习（选项随机）</title>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
         body {
@@ -157,7 +157,7 @@
     <div v-else-if="currentQuestion" class="question-container">
         <p class="question-stem">{{ currentQuestion.stem }}</p>
         <ul class="options-list">
-            <li v-for="(option, index) in currentQuestion.options"
+            <li v-for="(option, index) in currentQuestion.shuffledOptions"
                 :key="index"
                 class="option-item"
                 :class="{
@@ -190,8 +190,8 @@
         data() {
             return {
                 questionBank: [],
-                currentQuestion: null,
-                userSelection: {},
+                currentQuestion: null, // 将包含 stem 和 shuffledOptions
+                userSelection: [], // 改为数组以匹配打乱后的索引
                 showAnswer: false,
                 loading: true,
                 error: null,
@@ -201,7 +201,7 @@
         computed: {
             isSelectionEmpty() {
                 // 检查用户是否至少选择了一项
-                return Object.values(this.userSelection).every(value => !value);
+                return this.userSelection.every(value => !value);
             }
         },
         methods: {
@@ -223,30 +223,58 @@
                     this.loading = false;
                 }
             },
+            /**
+             * Fisher-Yates (aka Knuth) Shuffle.
+             * @param {Array} array The array to shuffle.
+             * @returns {Array} The shuffled array.
+             */
+            shuffleArray(array) {
+                let currentIndex = array.length, randomIndex;
+                // While there remain elements to shuffle.
+                while (currentIndex !== 0) {
+                    // Pick a remaining element.
+                    randomIndex = Math.floor(Math.random() * currentIndex);
+                    currentIndex--;
+                    // And swap it with the current element.
+                    [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+                }
+                return array;
+            },
             nextQuestion() {
                 if (this.questionBank.length === 0) {
                     this.error = '题库为空，无法抽题。';
                     return;
                 }
+                // 1. 随机选题
                 const randomIndex = Math.floor(Math.random() * this.questionBank.length);
-                this.currentQuestion = this.questionBank[randomIndex];
+                const question = this.questionBank[randomIndex];
+
+                // 2. 创建选项的副本并打乱顺序，以避免修改原始题库数据
+                const shuffledOptions = this.shuffleArray([...question.options]);
+
+                // 3. 将处理后的题目数据赋给 currentQuestion
+                this.currentQuestion = {
+                    stem: question.stem,
+                    shuffledOptions: shuffledOptions
+                };
+
+                // 4. 重置答题状态
                 this.resetState();
             },
             resetState() {
                 this.showAnswer = false;
-                this.userSelection = {};
-                // 初始化 userSelection 对象
+                // 根据当前题目的选项数量，初始化 userSelection 为一个布尔值数组
                 if (this.currentQuestion) {
-                    this.currentQuestion.options.forEach((_, index) => {
-                        this.userSelection[index] = false;
-                    });
+                    this.userSelection = new Array(this.currentQuestion.shuffledOptions.length).fill(false);
+                } else {
+                    this.userSelection = [];
                 }
             },
             toggleSelection(index) {
                 // 如果答案已显示，则不允许修改
                 if (this.showAnswer) return;
                 
-                // 因为不区分单选多选，所以总是切换状态
+                // 直接切换数组中对应索引的值
                 this.userSelection[index] = !this.userSelection[index];
             },
             checkAnswer() {
